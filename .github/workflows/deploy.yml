@@ -1,0 +1,37 @@
+name: Deploy - Update Lambda Image
+
+on:
+  push:
+    branches: [ "main" ]
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  ECR_URI: ${{ secrets.ECR_URI }}
+  LAMBDA_NAME: ${{ secrets.LAMBDA_FUNCTION_NAME }}
+  DDB_TABLE: ${{ secrets.DDB_TABLE }}
+
+jobs:
+  deploy-lambda:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Update Lambda to latest image
+        run: |
+          IMAGE_URI="$ECR_URI:latest"
+          echo "Updating Lambda $LAMBDA_NAME to image $IMAGE_URI"
+          aws lambda update-function-code --function-name "$LAMBDA_NAME" --image-uri "$IMAGE_URI"
+          aws lambda update-function-configuration --function-name "$LAMBDA_NAME" --environment "Variables={DDB_TABLE=$DDB_TABLE}"
+          aws lambda wait function-updated --function-name "$LAMBDA_NAME"
+          echo "Lambda updated to $IMAGE_URI"
+
+      - name: Invoke Lambda for verification
+        run: |
+          echo "Invoking Lambda $LAMBDA_NAME for test"
+          aws lambda invoke --function-name "$LAMBDA_NAME" --payload '{"source":"github-actions","time":"'"$(date -u +"%Y-%m-%dT%H:%M:%SZ")"'","detail":{}}' response.json
+          cat response.json
